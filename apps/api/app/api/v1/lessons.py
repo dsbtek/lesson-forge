@@ -106,7 +106,9 @@ async def regenerate_section(
     return GenerateResponse(generation_id=run.id, lesson_id=lesson.id, status=run.status)
 
 
-@router.post("/{lesson_id}/exports", response_model=ExportRead, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{lesson_id}/exports", response_model=ExportRead, status_code=status.HTTP_202_ACCEPTED
+)
 async def create_export(
     lesson_id: uuid.UUID,
     payload: ExportRequest,

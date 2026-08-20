@@ -10,7 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def validate(draft: dict[str, Any], assessment: dict[str, Any], duration_minutes: int) -> dict[str, Any]:
+def validate(
+    draft: dict[str, Any], assessment: dict[str, Any], duration_minutes: int
+) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
 

@@ -20,7 +20,9 @@ router = APIRouter(prefix="/generations", tags=["generations"])
 _TERMINAL = {str(e) for e in TERMINAL_EVENTS}
 
 
-async def _get_owned_run(db: DbSession, generation_id: uuid.UUID, user_id: uuid.UUID) -> GenerationRun:
+async def _get_owned_run(
+    db: DbSession, generation_id: uuid.UUID, user_id: uuid.UUID
+) -> GenerationRun:
     run = await db.get(GenerationRun, generation_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation not found")

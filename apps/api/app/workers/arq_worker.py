@@ -12,7 +12,7 @@ No LLM calls happen yet — the graph nodes are deterministic stubs.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from redis.asyncio import Redis
@@ -55,7 +55,7 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
             return {"error": f"generation run {generation_id} not found"}
 
         run.status = "running"
-        run.started_at = datetime.now(timezone.utc)
+        run.started_at = datetime.now(UTC)
         await db.commit()
 
         await _emit(
@@ -128,7 +128,7 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
             await db.flush()
 
             run.status = "completed"
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             run.quality_score = final_state.get("review", {}).get("score")
             await db.commit()
 
@@ -152,7 +152,7 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
         except Exception as exc:  # noqa: BLE001 - surface any failure to the client
             run.status = "failed"
             run.error = str(exc)[:2000]
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
             await db.commit()
             await _emit(
                 redis,
