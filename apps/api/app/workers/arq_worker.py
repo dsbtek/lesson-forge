@@ -18,6 +18,7 @@ from typing import Any
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.db.session import async_session_factory
 from app.graph import NODE_LABELS, get_graph
 from app.models import AgentEvent, GenerationRun, LessonVersion
@@ -83,24 +84,61 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
             total_nodes = len(NODE_LABELS)
             completed = 0
 
-            async for update in graph.astream(initial, stream_mode="updates"):
+            # Allow the repair loop to revisit nodes without tripping the default
+            # recursion limit (each revision replays design → … → validate).
+            config = {"recursion_limit": settings.max_revisions * 10 + 10}
+
+            async for update in graph.astream(initial, stream_mode="updates", config=config):
                 for node_name, partial in update.items():
                     completed += 1
                     if partial:
                         final_state.update(partial)
                     label = NODE_LABELS.get(node_name, node_name)
-                    await _emit(
-                        redis,
-                        db,
-                        generation_id,
-                        StreamEvent(
-                            event=EventType.AGENT_PROGRESS,
-                            generation_id=generation_id,
-                            agent=label,
-                            message=f"{label} completed",
-                            progress=int(completed / total_nodes * 100),
-                        ),
-                    )
+                    progress = min(100, int(completed / total_nodes * 100))
+
+                    if node_name == "repair":
+                        data = {
+                            "revision": partial.get("revision"),
+                            "repair_notes": partial.get("repair_notes", []),
+                        }
+                        await _emit(
+                            redis,
+                            db,
+                            generation_id,
+                            StreamEvent(
+                                event=EventType.REPAIR_STARTED,
+                                generation_id=generation_id,
+                                agent=label,
+                                message="Repairing lesson after review",
+                                data=data,
+                            ),
+                        )
+                        await _emit(
+                            redis,
+                            db,
+                            generation_id,
+                            StreamEvent(
+                                event=EventType.REPAIR_COMPLETED,
+                                generation_id=generation_id,
+                                agent=label,
+                                message="Repair prepared; regenerating",
+                                progress=progress,
+                                data=data,
+                            ),
+                        )
+                    else:
+                        await _emit(
+                            redis,
+                            db,
+                            generation_id,
+                            StreamEvent(
+                                event=EventType.AGENT_COMPLETED,
+                                generation_id=generation_id,
+                                agent=label,
+                                message=f"{label} completed",
+                                progress=progress,
+                            ),
+                        )
 
             validation = final_state.get("validation", {})
             if not validation.get("valid", True):

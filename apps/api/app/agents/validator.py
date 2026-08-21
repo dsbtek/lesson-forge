@@ -47,3 +47,32 @@ def validate(
         warnings.append("Lesson has no learning objectives.")
 
     return {"valid": not errors, "errors": errors, "warnings": warnings}
+
+
+def link_objectives_to_assessments(
+    draft: dict[str, Any], assessment: dict[str, Any]
+) -> dict[str, Any]:
+    """Ensure every objective references an existing assessment id.
+
+    Bookkeeping only: the designer and assessment specialist run in separate
+    fan-out branches and can't coordinate IDs, so we link objectives to
+    assessments deterministically *before* validation. Objectives whose
+    references are empty or dangling are pointed at the first assessment. This
+    keeps ID housekeeping out of the LLM's hands, so the repair loop fires only
+    on genuine quality issues (timing, missing sections), not ID mismatches.
+    """
+    assessments = assessment.get("assessments", [])
+    ids = [a.get("id") for a in assessments if a.get("id")]
+    if not ids:
+        return draft
+
+    valid = set(ids)
+    linked = dict(draft)
+    objectives = []
+    for obj in draft.get("objectives", []):
+        obj = dict(obj)
+        refs = [ref for ref in obj.get("assessment_ids", []) if ref in valid]
+        obj["assessment_ids"] = refs or [ids[0]]
+        objectives.append(obj)
+    linked["objectives"] = objectives
+    return linked

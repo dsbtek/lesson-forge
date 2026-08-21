@@ -22,4 +22,5 @@ class LessonState(TypedDict, total=False):
     final_content: dict[str, Any]
     history: list[dict[str, Any]]
     revision: int
+    repair_notes: list[str]
     status: str

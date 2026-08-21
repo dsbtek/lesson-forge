@@ -44,10 +44,25 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
 
-    # ── LLM providers (unused until agents are implemented) ─
+    # ── LLM providers ─────────────────────────────────────
+    # Reserved for later phases; agents use Ollama (below), not these.
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     embedding_dim: int = 1536
+
+    # ── LLM (Ollama, host-run) ────────────────────────────
+    # Agents produce deterministic fallback output unless this is enabled AND an
+    # Ollama server is reachable at `ollama_host`. See app/services/llm.py.
+    llm_enabled: bool = False
+    ollama_host: str = "http://host.docker.internal:11434"
+    llm_model: str = "llama3.1:8b"
+    llm_max_tokens: int = 4096
+    llm_temperature: float = 0.4
+    llm_timeout: float = 120.0
+
+    # ── Reflection / repair loop (README §11) ─────────────
+    quality_threshold: float = 0.8
+    max_revisions: int = 2
 
     @property
     def cors_origins_list(self) -> list[str]:

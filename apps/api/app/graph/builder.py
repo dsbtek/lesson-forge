@@ -1,13 +1,16 @@
-"""LangGraph pipeline (README section 6 agent graph).
+r"""LangGraph pipeline (README sections 6 and 11 — agent graph + repair loop).
 
-Wires the agent stubs into a compiled ``StateGraph`` over ``LessonState``:
+Wires the agents into a compiled ``StateGraph`` over ``LessonState``:
 
     normalize -> research -> design -> (differentiate ∥ assess) -> critic
-              -> validate -> finalize
+              -> validate --(ok)------> finalize
+                          \--(repair)--> repair -> design   (loop)
 
 The differentiation and assessment steps fan out from the designer and fan back
-into the critic. Nodes are deterministic stubs today; the repair loop (README
-section 11) is a Phase 2 follow-up.
+into the critic. After validation, ``route_after_validate`` sends the state to
+``finalize`` when the lesson is valid and the critic score clears
+``quality_threshold``; otherwise (and while ``revision < max_revisions``) it
+routes through ``repair`` back to the designer for another attempt.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from app.agents import (
     researcher,
     validator,
 )
+from app.config import settings
 from app.schemas.state import LessonState
 
 # Ordered node keys with friendly labels (used for progress events).
@@ -37,6 +41,7 @@ NODE_LABELS: dict[str, str] = {
     "assess": "assessment_specialist",
     "critic": "critic_reviewer",
     "validate": "deterministic_validator",
+    "repair": "repair_agent",
     "finalize": "finalizer",
 }
 
@@ -50,7 +55,11 @@ def _node_research(state: LessonState) -> dict:
 
 
 def _node_design(state: LessonState) -> dict:
-    return {"draft": designer.design(state["request"], state.get("research", {}))}
+    return {
+        "draft": designer.design(
+            state["request"], state.get("research", {}), state.get("repair_notes")
+        )
+    }
 
 
 def _node_differentiate(state: LessonState) -> dict:
@@ -60,7 +69,11 @@ def _node_differentiate(state: LessonState) -> dict:
 
 
 def _node_assess(state: LessonState) -> dict:
-    return {"assessment": assessment.assess(state["request"], state.get("draft", {}))}
+    result = assessment.assess(state["request"], state.get("draft", {}))
+    # Assign stable IDs regardless of provider so objectives can be linked to them.
+    for i, item in enumerate(result.get("assessments", []), start=1):
+        item["id"] = f"assessment-{i}"
+    return {"assessment": result}
 
 
 def _node_critic(state: LessonState) -> dict:
@@ -68,16 +81,46 @@ def _node_critic(state: LessonState) -> dict:
 
 
 def _node_validate(state: LessonState) -> dict:
+    draft = validator.link_objectives_to_assessments(
+        state.get("draft", {}), state.get("assessment", {})
+    )
     v = validator.validate(
-        state.get("draft", {}),
+        draft,
         state.get("assessment", {}),
         int(state["request"].get("duration_minutes", 60)),
     )
-    return {"validation": v}
+    # Return the linked draft too, so finalize persists the reconciled version.
+    return {"draft": draft, "validation": v}
+
+
+def _node_repair(state: LessonState) -> dict:
+    validation = state.get("validation", {})
+    review = state.get("review", {})
+    notes = list(validation.get("errors", []))
+    notes += [issue.get("issue", "") for issue in review.get("issues", []) if issue.get("issue")]
+    return {
+        "repair_notes": notes,
+        "revision": int(state.get("revision", 0)) + 1,
+        "status": "repairing",
+    }
 
 
 def _node_finalize(state: LessonState) -> dict:
     return {"final_content": finalizer.finalize(state), "status": "completed"}
+
+
+def route_after_validate(state: LessonState) -> str:
+    """Decide whether to repair or finalize after validation (README §11)."""
+    validation = state.get("validation", {})
+    review = state.get("review", {})
+    revision = int(state.get("revision", 0))
+
+    needs_repair = (not validation.get("valid", True)) or (
+        float(review.get("score", 1.0)) < settings.quality_threshold
+    )
+    if needs_repair and revision < settings.max_revisions:
+        return "repair"
+    return "finalize"
 
 
 def build_graph():
@@ -90,6 +133,7 @@ def build_graph():
     g.add_node("assess", _node_assess)
     g.add_node("critic", _node_critic)
     g.add_node("validate", _node_validate)
+    g.add_node("repair", _node_repair)
     g.add_node("finalize", _node_finalize)
 
     g.add_edge(START, "normalize")
@@ -102,7 +146,11 @@ def build_graph():
     g.add_edge("differentiate", "critic")
     g.add_edge("assess", "critic")
     g.add_edge("critic", "validate")
-    g.add_edge("validate", "finalize")
+    # Reflection loop: repair routes back to the designer; otherwise finalize.
+    g.add_conditional_edges(
+        "validate", route_after_validate, {"repair": "repair", "finalize": "finalize"}
+    )
+    g.add_edge("repair", "design")
     g.add_edge("finalize", END)
     return g.compile()
 

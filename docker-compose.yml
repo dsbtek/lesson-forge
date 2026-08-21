@@ -96,6 +96,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    extra_hosts:
+      # Reach a host-run Ollama (`ollama serve`) from the container on Linux.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # ── ARQ background worker (runs the LangGraph pipeline) ─────
@@ -115,6 +118,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    extra_hosts:
+      # Reach a host-run Ollama (`ollama serve`) from the container on Linux.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # ── Next.js frontend ────────────────────────────────────────
