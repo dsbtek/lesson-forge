@@ -22,6 +22,7 @@ from app.config import settings
 from app.db.session import async_session_factory
 from app.graph import NODE_LABELS, get_graph
 from app.models import AgentEvent, GenerationRun, LessonVersion
+from app.rag import retrieval
 from app.schemas.events import EventType, StreamEvent
 from app.services.redis import arq_redis_settings, events_stream_key, get_redis
 
@@ -71,9 +72,45 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
         )
 
         try:
+            # Hybrid RAG retrieval (README §10). Gated by RAG_ENABLED; soft-degrades so a
+            # store/model outage never fails the run. Runs on this (main-loop) session,
+            # then injects evidence into the graph's initial state for the sync research node.
+            evidence: list[dict[str, Any]] = []
+            if retrieval.available():
+                await _emit(
+                    redis,
+                    db,
+                    generation_id,
+                    StreamEvent(
+                        event=EventType.RETRIEVAL_STARTED,
+                        generation_id=generation_id,
+                        agent="curriculum_researcher",
+                        message="Retrieving curriculum evidence",
+                    ),
+                )
+                report = await retrieval.retrieve_for_request(db, request)
+                evidence = report.evidence
+                await _emit(
+                    redis,
+                    db,
+                    generation_id,
+                    StreamEvent(
+                        event=EventType.RETRIEVAL_COMPLETED,
+                        generation_id=generation_id,
+                        agent="curriculum_researcher",
+                        message=f"Retrieved {report.count} evidence chunk(s)",
+                        data={
+                            "count": report.count,
+                            "mode": report.mode,
+                            "degraded": report.degraded,
+                        },
+                    ),
+                )
+
             graph = get_graph()
             initial: dict[str, Any] = {
                 "request": request,
+                "evidence": evidence,
                 "generation_id": generation_id,
                 "lesson_id": str(run.lesson_id),
                 "history": [],

@@ -13,6 +13,7 @@ class LessonState(TypedDict, total=False):
     generation_id: str
     lesson_id: str
     request: dict[str, Any]
+    evidence: list[dict[str, Any]]
     research: dict[str, Any]
     draft: dict[str, Any]
     differentiation: dict[str, Any]

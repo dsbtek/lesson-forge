@@ -51,7 +51,9 @@ def _node_normalize(state: LessonState) -> dict:
 
 
 def _node_research(state: LessonState) -> dict:
-    return {"research": researcher.research(state["request"])}
+    # Evidence is retrieved by the worker (async) and injected into the initial
+    # state; offline / RAG-disabled runs pass no evidence and the researcher falls back.
+    return {"research": researcher.research(state["request"], state.get("evidence") or [])}
 
 
 def _node_design(state: LessonState) -> dict:

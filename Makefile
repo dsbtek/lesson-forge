@@ -5,7 +5,7 @@ COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down logs build ps migrate revision api-shell psql redis-cli \
+.PHONY: help up down logs build ps migrate revision ingest api-shell psql redis-cli \
         test fmt lint obs clean
 
 help: ## Show this help
@@ -32,6 +32,9 @@ migrate: ## Apply database migrations
 
 revision: ## Autogenerate a migration:  make revision m="add table"
 	$(COMPOSE) run --rm -e RUN_MIGRATIONS=0 api alembic revision --autogenerate -m "$(m)"
+
+ingest: ## Ingest curriculum docs into the RAG store (seed corpus + ./knowledge)
+	$(COMPOSE) run --rm -e RUN_MIGRATIONS=0 api python -m app.rag.ingest --paths /knowledge
 
 api-shell: ## Open a shell inside the api container
 	$(COMPOSE) run --rm api bash

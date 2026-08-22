@@ -48,7 +48,17 @@ class Settings(BaseSettings):
     # Reserved for later phases; agents use Ollama (below), not these.
     anthropic_api_key: str = ""
     openai_api_key: str = ""
-    embedding_dim: int = 1536
+
+    # ── Hybrid RAG (README §10) ───────────────────────────
+    # Retrieval is gated behind `rag_enabled` (like `llm_enabled`): while false,
+    # the worker performs no retrieval and the researcher uses its deterministic
+    # fallback, so the app and its tests run fully offline. Embeddings go through
+    # the same host-run Ollama server as the LLM (see below); `embedding_dim` must
+    # match `embedding_model` (nomic-embed-text → 768).
+    rag_enabled: bool = False
+    embedding_model: str = "nomic-embed-text"
+    embedding_dim: int = 768
+    rag_top_k: int = 8
 
     # ── LLM (Ollama, host-run) ────────────────────────────
     # Agents produce deterministic fallback output unless this is enabled AND an
