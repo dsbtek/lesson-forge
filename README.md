@@ -1160,13 +1160,17 @@ This makes the system resilient to:
 | Vector DB | Qdrant or Pinecone |
 | Sparse Search | PostgreSQL FTS / BM25 |
 | Primary DB | PostgreSQL |
+| ORM / Query Builder | SQLAlchemy (async) or SQLModel |
 | Cache / Queue | Redis |
-| Background Workers | Celery, ARQ, or dedicated async workers |
+| Background Workers | ARQ, Procrastinate, or dedicated async workers |
 | Object Storage | S3-compatible storage |
-| Streaming | SSE initially |
+| Streaming | SSE initially (Yjs or Liveblocks for future collaborative editing) |
 | Documents | python-docx + reportlab |
 | Auth | OAuth2 / OIDC |
 | Observability | OpenTelemetry + Prometheus + Grafana |
+| LLM Ops & Eval | LangSmith or Promptfoo |
+| Testing | Pytest (Backend) & Playwright/Vitest (Frontend) |
+| Code Quality | Ruff + MyPy (Backend) & ESLint + Prettier (Frontend) |
 | Deployment | Docker + Kubernetes or managed containers |
 
 ---
