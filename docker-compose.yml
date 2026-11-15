@@ -10,24 +10,24 @@
 name: lesson-forge
 
 services:
-  # ── PostgreSQL with the pgvector extension ──────────────────
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-forge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forge}
-      POSTGRES_DB: ${POSTGRES_DB:-lessonforge}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forge} -d ${POSTGRES_DB:-lessonforge}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+  # ── PostgreSQL (disabled: using host/system-installed PostgreSQL) ───
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER:-forge}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forge}
+  #     POSTGRES_DB: ${POSTGRES_DB:-lessonforge}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #     - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forge} -d ${POSTGRES_DB:-lessonforge}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 10
+  #   restart: unless-stopped
 
   # ── Redis (cache, ARQ queue, event streams) ─────────────────
   redis:
@@ -46,7 +46,7 @@ services:
 
   # ── MinIO (S3-compatible object storage) ────────────────────
   minio:
-    image: minio/minio:latest
+    image: pgsty/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -60,7 +60,7 @@ services:
 
   # ── One-shot: create the bucket, then exit ──────────────────
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:latest
     depends_on:
       - minio
     environment:
@@ -94,8 +94,6 @@ services:
       # Curriculum docs for RAG ingestion (`make ingest`); read-only.
       - ./knowledge:/knowledge:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     extra_hosts:
@@ -120,8 +118,6 @@ services:
       # Curriculum docs for RAG ingestion (`make ingest`); read-only.
       - ./knowledge:/knowledge:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     extra_hosts:

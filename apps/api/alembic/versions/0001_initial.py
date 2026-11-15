@@ -30,7 +30,19 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # pgvector extension (also created by infra/docker/postgres/init.sql on first boot;
     # repeated here so the migration is self-contained against any fresh database).
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # If the database user is not a superuser, ignore insufficient_privilege
+    # assuming the extension has already been provisioned by a DBA/superuser.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            CREATE EXTENSION IF NOT EXISTS vector;
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                NULL;
+        END $$;
+        """
+    )
 
     op.create_table(
         "users",
