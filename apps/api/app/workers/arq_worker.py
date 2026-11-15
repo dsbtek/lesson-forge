@@ -236,7 +236,7 @@ async def run_generation(ctx: dict, generation_id: str, request: dict[str, Any])
                 StreamEvent(
                     event=EventType.GENERATION_FAILED,
                     generation_id=generation_id,
-                    message="Generation failed",
+                    message=f"Generation failed: {exc}",
                     data={"error": str(exc)},
                 ),
             )

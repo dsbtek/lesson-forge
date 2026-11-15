@@ -54,18 +54,27 @@ def _http_client():
     headers = {"Content-Type": "application/json"}
     if settings.ai_api_key:
         headers["Authorization"] = f"Bearer {settings.ai_api_key}"
+    base_url = settings.ai_base_url.rstrip("/") + "/"
     return httpx.Client(
-        base_url=settings.ai_base_url.rstrip("/"),
+        base_url=base_url,
         headers=headers,
         timeout=settings.llm_timeout,
     )
 
 
 def _strip_json_fences(raw: str) -> str:
-    """Remove optional markdown code fences around JSON output."""
+    """Remove conversational text and markdown code fences around JSON output."""
     text = raw.strip()
-    match = _FENCE_RE.match(text)
-    return match.group(1).strip() if match else text
+    # Check for markdown code fences anywhere in the response
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    # Isolate JSON object if there is conversational preamble or suffix
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        return text[first_brace : last_brace + 1]
+    return text
 
 
 def _generate_ollama(
@@ -114,16 +123,14 @@ def _generate_openai_compat(
         ],
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema.__name__,
-                "schema": json_schema,
-            },
-        },
+        "response_format": {"type": "json_object"},
     }
     with _http_client() as client:
-        resp = client.post("/chat/completions", json=payload)
+        resp = client.post("chat/completions", json=payload)
+        # If the local router returns 400 rejecting response_format, retry without it
+        if resp.status_code == 400 and "response_format" in resp.text:
+            payload.pop("response_format", None)
+            resp = client.post("chat/completions", json=payload)
         resp.raise_for_status()
         data = resp.json()
     content = data["choices"][0]["message"]["content"]

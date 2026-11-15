@@ -105,13 +105,12 @@ def test_generate_structured_openai_compat_builds_call_and_strips_fences(monkeyp
     assert result.n == 3
 
     (path, payload), = fake.calls
-    assert path == "/chat/completions"
+    assert path == "chat/completions"
     assert payload["model"] == "qwen2.5-1.5b"
     assert [m["role"] for m in payload["messages"]] == ["system", "user"]
     assert payload["messages"][0]["content"].startswith("SYS")
     assert payload["messages"][1]["content"] == "USER"
-    assert payload["response_format"]["type"] == "json_schema"
-    assert payload["response_format"]["json_schema"]["schema"] == _Out.model_json_schema()
+    assert payload["response_format"]["type"] == "json_object"
     assert "max_tokens" in payload
     assert "temperature" in payload
 

@@ -44,8 +44,9 @@ def _http_client():
     headers = {"Content-Type": "application/json"}
     if settings.ai_api_key:
         headers["Authorization"] = f"Bearer {settings.ai_api_key}"
+    base_url = settings.ai_base_url.rstrip("/") + "/"
     return httpx.Client(
-        base_url=settings.ai_base_url.rstrip("/"),
+        base_url=base_url,
         headers=headers,
         timeout=settings.llm_timeout,
     )
@@ -60,7 +61,7 @@ def _embed_ollama(texts: list[str], model: str) -> list[list[float]]:
 @retry_with_backoff(retries=2, initial_delay=0.5)
 def _embed_openai_compat(texts: list[str], model: str) -> list[list[float]]:
     with _http_client() as client:
-        resp = client.post("/embeddings", json={"model": model, "input": texts})
+        resp = client.post("embeddings", json={"model": model, "input": texts})
         resp.raise_for_status()
         data = resp.json()
     items = sorted(data["data"], key=lambda item: item["index"])

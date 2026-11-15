@@ -79,7 +79,7 @@ def test_embed_texts_openai_compat_orders_and_validates_dim(monkeypatch):
             return False
 
         def post(self, path, *, json):
-            assert path == "/embeddings"
+            assert path == "embeddings"
             assert json["model"] == "all-minilm-l6-v2"
             return _FakeHttpResponse()
 

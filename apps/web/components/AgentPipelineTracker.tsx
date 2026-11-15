@@ -170,7 +170,11 @@ export default function AgentPipelineTracker({
             fetchAndComplete();
             break;
           case "generation.failed":
-            onError(ev.message || "Generation pipeline failed.");
+            const errorDetail =
+              (ev.data && typeof ev.data.error === "string" && ev.data.error) ||
+              ev.message ||
+              "Generation pipeline failed.";
+            onError(errorDetail);
             break;
           default:
             if (ev.message) {
