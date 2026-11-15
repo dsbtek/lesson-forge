@@ -1,14 +1,14 @@
-"""Dense embeddings via the host-run Ollama server (README §23 — "Generate embeddings").
+"""Dense embeddings via local OpenAI-compatible (llama.cpp) or Ollama server.
 
-Mirrors :mod:`app.services.llm`: the ``ollama`` package is imported lazily so the
-offline path needs no dependency, and embeddings are only produced when
-:func:`enabled` is true (``rag_enabled`` set *and* an ``embedding_model`` /
-``ollama_host`` configured). Any provider failure raises :class:`EmbeddingError`;
-callers in the retrieval/ingestion paths decide whether to soft-degrade (retrieval)
-or fail (ingestion).
+Mirrors :mod:`app.services.llm`: provider clients are created lazily so the
+offline path needs no runtime dependency, and embeddings are only produced when
+:func:`enabled` is true (``rag_enabled`` set, ``embedding_model`` configured,
+and the provider endpoint set). Any provider failure raises
+:class:`EmbeddingError`; callers in the retrieval/ingestion paths decide whether
+to soft-degrade (retrieval) or fail (ingestion).
 
 The embedding dimension must match ``settings.embedding_dim`` — the pgvector column
-is fixed-width. With the default ``nomic-embed-text`` model that is 768.
+is fixed-width (384 for ``all-minilm-l6-v2``, 768 for ``nomic-embed-text``).
 """
 
 from __future__ import annotations
@@ -17,12 +17,16 @@ from app.config import settings
 
 
 class EmbeddingError(RuntimeError):
-    """Raised when an Ollama embedding call fails."""
+    """Raised when an embedding call fails."""
 
 
 def enabled() -> bool:
     """True when dense embeddings can be produced (else retrieval is sparse-only)."""
-    return bool(settings.rag_enabled and settings.embedding_model and settings.ollama_host)
+    if not (settings.rag_enabled and settings.embedding_model):
+        return False
+    if settings.llm_provider == "ollama":
+        return bool(settings.ollama_host)
+    return bool(settings.ai_base_url)
 
 
 def _client():
@@ -30,6 +34,35 @@ def _client():
     import ollama
 
     return ollama.Client(host=settings.ollama_host, timeout=settings.llm_timeout)
+
+
+def _http_client():
+    """Return a sync httpx client for OpenAI-compatible endpoints."""
+    import httpx
+
+    headers = {"Content-Type": "application/json"}
+    if settings.ai_api_key:
+        headers["Authorization"] = f"Bearer {settings.ai_api_key}"
+    return httpx.Client(
+        base_url=settings.ai_base_url.rstrip("/"),
+        headers=headers,
+        timeout=settings.llm_timeout,
+    )
+
+
+def _embed_ollama(texts: list[str], model: str) -> list[list[float]]:
+    response = _client().embed(model=model, input=texts)
+    raw = response.get("embeddings") if isinstance(response, dict) else response.embeddings
+    return list(raw)
+
+
+def _embed_openai_compat(texts: list[str], model: str) -> list[list[float]]:
+    with _http_client() as client:
+        resp = client.post("/embeddings", json={"model": model, "input": texts})
+        resp.raise_for_status()
+        data = resp.json()
+    items = sorted(data["data"], key=lambda item: item["index"])
+    return [item["embedding"] for item in items]
 
 
 def embed_texts(texts: list[str], *, model: str | None = None) -> list[list[float]]:
@@ -40,12 +73,14 @@ def embed_texts(texts: list[str], *, model: str | None = None) -> list[list[floa
     """
     if not texts:
         return []
+    target_model = model or settings.embedding_model
     try:
-        response = _client().embed(model=model or settings.embedding_model, input=texts)
-        raw = response.get("embeddings") if isinstance(response, dict) else response.embeddings
-        vectors = list(raw)
+        if settings.llm_provider == "ollama":
+            vectors = _embed_ollama(texts, target_model)
+        else:
+            vectors = _embed_openai_compat(texts, target_model)
     except Exception as exc:  # noqa: BLE001 - normalize every provider failure
-        raise EmbeddingError(f"Ollama embedding failed: {exc}") from exc
+        raise EmbeddingError(f"{settings.llm_provider} embedding failed: {exc}") from exc
 
     if len(vectors) != len(texts):
         raise EmbeddingError(f"expected {len(texts)} embeddings, got {len(vectors)}")
@@ -54,7 +89,7 @@ def embed_texts(texts: list[str], *, model: str | None = None) -> list[list[floa
         if len(v) != dim:
             raise EmbeddingError(
                 f"embedding width {len(v)} != EMBEDDING_DIM {dim}; "
-                f"check EMBEDDING_MODEL='{model or settings.embedding_model}'"
+                f"check EMBEDDING_MODEL='{target_model}'"
             )
     return [list(v) for v in vectors]
 

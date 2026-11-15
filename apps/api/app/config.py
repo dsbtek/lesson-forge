@@ -53,20 +53,24 @@ class Settings(BaseSettings):
     # Retrieval is gated behind `rag_enabled` (like `llm_enabled`): while false,
     # the worker performs no retrieval and the researcher uses its deterministic
     # fallback, so the app and its tests run fully offline. Embeddings go through
-    # the same host-run Ollama server as the LLM (see below); `embedding_dim` must
-    # match `embedding_model` (nomic-embed-text → 768).
+    # the configured provider (`openai_compat` or `ollama`); `embedding_dim` must
+    # match `embedding_model` (all-minilm-l6-v2 → 384, nomic-embed-text → 768).
     rag_enabled: bool = False
-    embedding_model: str = "nomic-embed-text"
-    embedding_dim: int = 768
+    embedding_model: str = "all-minilm-l6-v2"
+    embedding_dim: int = 384
     rag_top_k: int = 8
 
-    # ── LLM (Ollama, host-run) ────────────────────────────
-    # Agents produce deterministic fallback output unless this is enabled AND an
-    # Ollama server is reachable at `ollama_host`. See app/services/llm.py.
+    # ── LLM (local llama.cpp / Ollama) ────────────────────
+    # Agents produce deterministic fallback output unless `llm_enabled` is true
+    # AND the configured provider endpoint is set (`ai_base_url` for
+    # `openai_compat`, or `ollama_host` for `ollama`). See app/services/llm.py.
     llm_enabled: bool = False
+    llm_provider: str = "openai_compat"
+    ai_base_url: str = "http://host.docker.internal:8080/v1"
+    ai_api_key: str = "not-needed"
     ollama_host: str = "http://host.docker.internal:11434"
-    llm_model: str = "llama3.1:8b"
-    llm_max_tokens: int = 4096
+    llm_model: str = "qwen2.5-1.5b"
+    llm_max_tokens: int = 1024
     llm_temperature: float = 0.4
     llm_timeout: float = 120.0
 

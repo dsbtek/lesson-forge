@@ -99,7 +99,9 @@ services:
       redis:
         condition: service_healthy
     extra_hosts:
-      # Reach a host-run Ollama (`ollama serve`) from the container on Linux.
+      # Reach a host-run llama-api-router (:8080) or Ollama (:11434) from Linux containers.
+      # To use http://llama-api-router:8080/v1 directly, attach api/worker to the
+      # external `ai-models_default` network (see docs/model-integration.md).
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
@@ -123,7 +125,9 @@ services:
       redis:
         condition: service_healthy
     extra_hosts:
-      # Reach a host-run Ollama (`ollama serve`) from the container on Linux.
+      # Reach a host-run llama-api-router (:8080) or Ollama (:11434) from Linux containers.
+      # To use http://llama-api-router:8080/v1 directly, attach api/worker to the
+      # external `ai-models_default` network (see docs/model-integration.md).
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
