@@ -141,13 +141,47 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
-export async function getHealth(): Promise<boolean> {
+export interface HealthInfo {
+  ok: boolean;
+  llmEnabled: boolean;
+  llmProvider: string;
+  llmModel: string;
+  ragEnabled: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  is_active: boolean;
+}
+
+export async function getHealth(): Promise<HealthInfo> {
   try {
     const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
-    return res.ok;
+    if (!res.ok) {
+      return { ok: false, llmEnabled: false, llmProvider: "", llmModel: "", ragEnabled: false };
+    }
+    const data = await res.json();
+    return {
+      ok: true,
+      llmEnabled: Boolean(data?.llm_enabled),
+      llmProvider: String(data?.llm_provider || ""),
+      llmModel: String(data?.llm_model || "fallback-stub"),
+      ragEnabled: Boolean(data?.rag_enabled),
+    };
   } catch {
-    return false;
+    return { ok: false, llmEnabled: false, llmProvider: "", llmModel: "", ragEnabled: false };
   }
+}
+
+export async function getMe(token: string): Promise<UserProfile> {
+  const res = await fetch(`${API_V1}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as UserProfile;
 }
 
 export async function register(
@@ -227,6 +261,39 @@ export async function listLessons(token: string): Promise<LessonSummary[]> {
   });
   if (!res.ok) throw new ApiError(res.status, await parseError(res));
   return (await res.json()) as LessonSummary[];
+}
+
+export async function updateLesson(
+  token: string,
+  lessonId: string,
+  patch: { title?: string; subject?: string; grade?: string; duration_minutes?: number },
+): Promise<LessonSummary> {
+  const res = await fetch(`${API_V1}/lessons/${lessonId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as LessonSummary;
+}
+
+export async function regenerateSection(
+  token: string,
+  lessonId: string,
+  sectionId: string,
+): Promise<GenerateResponse> {
+  const res = await fetch(
+    `${API_V1}/lessons/${lessonId}/sections/${encodeURIComponent(sectionId)}/regenerate`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as GenerateResponse;
 }
 
 export interface ExportResult {

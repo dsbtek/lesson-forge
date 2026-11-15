@@ -48,8 +48,14 @@ def create_app() -> FastAPI:
     )
 
     @app.get("/health", tags=["health"])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health() -> dict[str, object]:
+        return {
+            "status": "ok",
+            "llm_enabled": settings.llm_enabled,
+            "llm_provider": settings.llm_provider,
+            "llm_model": settings.llm_model if settings.llm_enabled else "fallback-stub",
+            "rag_enabled": settings.rag_enabled,
+        }
 
     @app.get("/health/ready", tags=["health"])
     async def ready(response: Response) -> dict[str, str]:
