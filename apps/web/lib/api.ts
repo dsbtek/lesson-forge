@@ -24,7 +24,106 @@ export interface GenerateResponse {
   status: string;
 }
 
-class ApiError extends Error {
+export interface GenerationStatus {
+  id: string;
+  lesson_id: string;
+  status: string;
+  revision: number;
+  quality_score?: number | null;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface StandardRef {
+  code: string;
+  description?: string | null;
+  evidence: string[];
+}
+
+export interface Objective {
+  id: string;
+  text: string;
+  assessment_ids: string[];
+}
+
+export interface LessonSection {
+  id: string;
+  title: string;
+  duration_minutes: number;
+  teacher_actions: string[];
+  student_actions: string[];
+  materials: string[];
+}
+
+export interface Differentiation {
+  ell: string[];
+  iep: string[];
+  gifted: string[];
+}
+
+export interface Assessment {
+  id: string;
+  type: string;
+  questions: string[];
+  success_criteria: string[];
+}
+
+export interface ReviewIssue {
+  severity: "low" | "medium" | "high";
+  field?: string | null;
+  issue: string;
+  recommendation?: string | null;
+}
+
+export interface ReviewResult {
+  review_passed: boolean;
+  score: number;
+  issues: ReviewIssue[];
+}
+
+export interface LessonContent {
+  title: string;
+  grade: string;
+  subject: string;
+  duration_minutes: number;
+  standards: StandardRef[];
+  objectives: Objective[];
+  sections: LessonSection[];
+  differentiation: Differentiation;
+  assessments: Assessment[];
+  vocabulary: string[];
+  materials: string[];
+  review: ReviewResult;
+}
+
+export interface LessonVersion {
+  id: string;
+  version: number;
+  status: string;
+  content: LessonContent;
+  created_at: string;
+}
+
+export interface LessonSummary {
+  id: string;
+  title: string;
+  subject?: string | null;
+  grade?: string | null;
+  duration_minutes?: number | null;
+  created_at: string;
+}
+
+export interface StreamEvent {
+  event: string;
+  generation_id: string;
+  agent?: string | null;
+  message?: string | null;
+  progress?: number | null;
+  data?: Record<string, unknown>;
+}
+
+export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
     super(message);
@@ -61,14 +160,13 @@ export async function register(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, full_name: fullName || null }),
   });
-  // 400 = already registered; treat as non-fatal so the demo login can proceed.
+  // 400 = already registered; treat as non-fatal so demo login can proceed.
   if (!res.ok && res.status !== 400) {
     throw new ApiError(res.status, await parseError(res));
   }
 }
 
 export async function login(email: string, password: string): Promise<string> {
-  // The API uses an OAuth2 password form: field name is `username` (= email).
   const form = new URLSearchParams();
   form.set("username", email);
   form.set("password", password);
@@ -96,4 +194,130 @@ export async function generateLesson(
   });
   if (!res.ok) throw new ApiError(res.status, await parseError(res));
   return (await res.json()) as GenerateResponse;
+}
+
+export async function getGenerationStatus(
+  token: string,
+  generationId: string,
+): Promise<GenerationStatus> {
+  const res = await fetch(`${API_V1}/generations/${generationId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as GenerationStatus;
+}
+
+export async function getLessonVersions(
+  token: string,
+  lessonId: string,
+): Promise<LessonVersion[]> {
+  const res = await fetch(`${API_V1}/lessons/${lessonId}/versions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as LessonVersion[];
+}
+
+export async function listLessons(token: string): Promise<LessonSummary[]> {
+  const res = await fetch(`${API_V1}/lessons`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as LessonSummary[];
+}
+
+export interface ExportResult {
+  id: string;
+  lesson_version_id: string;
+  format: string;
+  status: string;
+  storage_url?: string | null;
+}
+
+export async function createExport(
+  token: string,
+  lessonId: string,
+  format: "markdown" | "pdf" | "json" | "docx" = "markdown",
+  versionId?: string,
+): Promise<ExportResult> {
+  const res = await fetch(`${API_V1}/lessons/${lessonId}/exports`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ format, version_id: versionId || null }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseError(res));
+  return (await res.json()) as ExportResult;
+}
+
+/**
+ * Connect to SSE generation events stream with automatic reconnect/cleanup.
+ */
+export function streamGenerationEvents(
+  token: string,
+  generationId: string,
+  onEvent: (ev: StreamEvent) => void,
+  onError: (err: Error) => void,
+): () => void {
+  const controller = new AbortController();
+
+  const run = async () => {
+    try {
+      const res = await fetch(`${API_V1}/generations/${generationId}/events`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`SSE failed with status ${res.status}`);
+      }
+
+      if (!res.body) {
+        throw new Error("No response body for SSE");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const block of lines) {
+          const match = block.match(/data:\s*(.*)/);
+          if (match && match[1]) {
+            try {
+              const data = JSON.parse(match[1]) as StreamEvent;
+              onEvent(data);
+            } catch {
+              // Ignore keep-alive comments or invalid JSON blocks
+            }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== "AbortError") {
+        onError(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+  };
+
+  run();
+
+  return () => {
+    controller.abort();
+  };
 }

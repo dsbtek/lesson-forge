@@ -1,0 +1,46 @@
+[
+  {
+    "id": "golden-01-grade5-science",
+    "grade": "5",
+    "subject": "Science",
+    "topic": "Earth Systems & The Water Cycle",
+    "duration_minutes": 60,
+    "standards": ["NGSS 5-ESS2-1"],
+    "instructional_strategy": "Inquiry-based 5E Model",
+    "learner_profiles": ["ELL", "Gifted"],
+    "assessment_type": "Formative + Exit Ticket"
+  },
+  {
+    "id": "golden-02-grade8-math",
+    "grade": "8",
+    "subject": "Mathematics",
+    "topic": "Graphing Linear Equations and Slope",
+    "duration_minutes": 45,
+    "standards": ["CCSS.MATH.8.EE.B.5"],
+    "instructional_strategy": "Worked Examples & Collaborative Problem Solving",
+    "learner_profiles": ["IEP (Visual Learner)", "General"],
+    "assessment_type": "Diagnostic Warm-up + Check Quiz"
+  },
+  {
+    "id": "golden-03-grade10-ela",
+    "grade": "10",
+    "subject": "English Language Arts",
+    "topic": "Rhetorical Analysis and Persuasive Arguments",
+    "duration_minutes": 60,
+    "standards": ["CCSS.ELA-LITERACY.RI.9-10.6"],
+    "instructional_strategy": "Socratic Seminar",
+    "learner_profiles": ["ELL Level 3", "Advanced"],
+    "assessment_type": "Analytical Paragraph & Rubric"
+  },
+  {
+    "id": "golden-04-grade3-social-studies",
+    "grade": "3",
+    "subject": "Social Studies",
+    "topic": "Community Governance and Citizens Rights",
+    "duration_minutes": 40,
+    "standards": ["C3.D2.Civ.1.3-5"],
+    "instructional_strategy": "Direct Instruction & Role Play",
+    "learner_profiles": ["General", "Striving Readers"],
+    "assessment_type": "Class Discussion & Exit Card"
+  }
+]

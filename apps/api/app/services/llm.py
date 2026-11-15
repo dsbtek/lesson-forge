@@ -20,6 +20,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import settings
+from app.core.resilience import retry_with_backoff
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -90,6 +91,7 @@ def _generate_ollama(
     return schema.model_validate_json(response.message.content)
 
 
+@retry_with_backoff(retries=2, initial_delay=0.5)
 def _generate_openai_compat(
     system: str,
     user: str,

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import desc, select
 
 from app.api.deps import ArqPool, CurrentUser, DbSession
+from app.core.rate_limit import generation_rate_limit
 from app.models import Export, Lesson, LessonVersion, User
 from app.schemas.lesson import (
     ExportRead,
@@ -18,6 +19,7 @@ from app.schemas.lesson import (
     LessonUpdate,
     LessonVersionRead,
 )
+from app.services.export import render_export, save_export_artifact
 from app.services.generation import start_generation
 
 router = APIRouter(prefix="/lessons", tags=["lessons"])
@@ -36,6 +38,7 @@ async def generate_lesson(
     db: DbSession,
     arq: ArqPool,
     current_user: CurrentUser,
+    _rate_limit: generation_rate_limit = None,
 ) -> GenerateResponse:
     lesson, run = await start_generation(db, arq, current_user, req)
     return GenerateResponse(generation_id=run.id, lesson_id=lesson.id, status=run.status)
@@ -132,9 +135,47 @@ async def create_export(
             detail="No lesson version available to export",
         )
 
-    # TODO(phase4): render the artifact (DOCX/PDF) and upload to object storage.
-    export = Export(lesson_version_id=version.id, format=payload.format, status="pending")
+    # Render the export artifact into the requested format (Phase 4).
+    data, ext, _mime = render_export(version.content, payload.format)
+    export_id = uuid.uuid4()
+    save_export_artifact(str(export_id), data, ext)
+
+    download_url = f"/api/v1/lessons/{lesson_id}/exports/{export_id}/download"
+    export = Export(
+        id=export_id,
+        lesson_version_id=version.id,
+        format=payload.format,
+        status="completed",
+        storage_url=download_url,
+    )
     db.add(export)
     await db.commit()
     await db.refresh(export)
     return export
+
+
+@router.get("/{lesson_id}/exports/{export_id}/download")
+async def download_export(
+    lesson_id: uuid.UUID,
+    export_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> Response:
+    """Download a rendered export artifact (Phase 4)."""
+    await _get_owned_lesson(db, lesson_id, current_user)
+    export = await db.get(Export, export_id)
+    if export is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export not found")
+
+    version = await db.get(LessonVersion, export.lesson_version_id)
+    if version is None or version.lesson_id != lesson_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export not found")
+
+    data, ext, mime_type = render_export(version.content, export.format)
+    filename = f"lesson_{lesson_id}_{export.format}.{ext}"
+
+    return Response(
+        content=data,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

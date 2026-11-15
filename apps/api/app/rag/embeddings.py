@@ -14,6 +14,7 @@ is fixed-width (384 for ``all-minilm-l6-v2``, 768 for ``nomic-embed-text``).
 from __future__ import annotations
 
 from app.config import settings
+from app.core.resilience import retry_with_backoff
 
 
 class EmbeddingError(RuntimeError):
@@ -56,6 +57,7 @@ def _embed_ollama(texts: list[str], model: str) -> list[list[float]]:
     return list(raw)
 
 
+@retry_with_backoff(retries=2, initial_delay=0.5)
 def _embed_openai_compat(texts: list[str], model: str) -> list[list[float]]:
     with _http_client() as client:
         resp = client.post("/embeddings", json={"model": model, "input": texts})
