@@ -30,4 +30,4 @@ build/
 .idea/
 .vscode/
 *.swp
-/models
+/knowledge/nerdc

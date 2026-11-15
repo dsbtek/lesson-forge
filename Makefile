@@ -33,6 +33,9 @@ migrate: ## Apply database migrations
 revision: ## Autogenerate a migration:  make revision m="add table"
 	$(COMPOSE) run --rm -e RUN_MIGRATIONS=0 api alembic revision --autogenerate -m "$(m)"
 
+download-nerdc: ## Download official NERDC curriculum PDFs into knowledge/nerdc
+	python3 scripts/download_nerdc.py $(ARGS)
+
 ingest: ## Ingest curriculum docs into the RAG store (seed corpus + ./knowledge)
 	$(COMPOSE) run --rm -e RUN_MIGRATIONS=0 api python -m app.rag.ingest --paths /knowledge
 
